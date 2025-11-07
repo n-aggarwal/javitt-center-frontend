@@ -16,13 +16,15 @@ class QueryProcessor:
         self.bedrock_client = bedrock_client
 
     def process_natural_language_query(self, natural_language_query: str,
-                                       include_explanation: bool = True) -> Dict[str, Any]:
+                                       include_explanation: bool = True,
+                                       conversation_history: List[Dict[str, Any]] = None) -> Dict[str, Any]:
         """
-        Process a natural language query end-to-end.
+        Process a natural language query end-to-end with conversation context.
 
         Args:
             natural_language_query: User's question in natural language
             include_explanation: Whether to generate natural language explanation of results
+            conversation_history: Previous conversation messages for context
 
         Returns:
             Dictionary containing:
@@ -48,8 +50,12 @@ class QueryProcessor:
             # Step 1: Get database schema
             schema = self.db_service.get_schema()
 
-            # Step 2: Generate SQL using Bedrock
-            sql_query = self.bedrock_client.generate_sql(natural_language_query, schema)
+            # Step 2: Generate SQL using Bedrock with conversation history
+            sql_query = self.bedrock_client.generate_sql(
+                natural_language_query,
+                schema,
+                conversation_history=conversation_history
+            )
             response["sql"] = sql_query
 
             # Step 3: Execute the SQL query
@@ -61,7 +67,10 @@ class QueryProcessor:
             # Step 4: Generate natural language explanation (optional)
             if include_explanation:
                 explanation = self.bedrock_client.chat_with_results(
-                    natural_language_query, sql_query, results
+                    natural_language_query,
+                    sql_query,
+                    results,
+                    conversation_history=conversation_history
                 )
                 response["explanation"] = explanation
 
@@ -73,7 +82,11 @@ class QueryProcessor:
             if include_explanation and response["sql"]:
                 try:
                     explanation = self.bedrock_client.chat_with_results(
-                        natural_language_query, response["sql"], [], error=str(e)
+                        natural_language_query,
+                        response["sql"],
+                        [],
+                        error=str(e),
+                        conversation_history=conversation_history
                     )
                     response["explanation"] = explanation
                 except:

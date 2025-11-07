@@ -1,6 +1,6 @@
 import boto3
 import json
-from typing import Optional
+from typing import Optional, List, Dict, Any
 
 
 class BedrockClient:
@@ -16,19 +16,32 @@ class BedrockClient:
         self.model_id = model_id
         self.client = boto3.client('bedrock-runtime', region_name=region_name)
 
-    def generate_sql(self, natural_language_query: str, database_schema: str) -> str:
+    def generate_sql(self, natural_language_query: str, database_schema: str,
+                     conversation_history: List[Dict[str, Any]] = None) -> str:
         """
-        Convert natural language query to SQL using AWS Bedrock.
+        Convert natural language query to SQL using AWS Bedrock with conversation context.
 
         Args:
             natural_language_query: The user's question in natural language
             database_schema: String describing the database schema
+            conversation_history: Previous conversation messages for context
 
         Returns:
             Generated SQL query string
         """
-        # Construct the prompt for Claude
-        prompt = f"""You are a SQL expert. Given a database schema and a natural language question, generate a valid SQLite query.
+        # Build messages array with conversation history
+        messages = []
+
+        # Add conversation history if provided
+        if conversation_history:
+            for msg in conversation_history:
+                messages.append({
+                    "role": msg.get("role"),
+                    "content": msg.get("content")
+                })
+
+        # Construct the current prompt for Claude
+        prompt = f"""You are a SQL expert. Given a database schema, a natural language question, and a database dictionary if provided, generate a valid SQLite query.
 
 {database_schema}
 
@@ -42,19 +55,21 @@ Important instructions:
 5. Use proper JOIN clauses when needed
 6. Include appropriate WHERE clauses to filter results
 7. Return ONLY the SQL query without any markdown formatting, backticks, or code blocks
+8. Consider previous conversation context when generating the query
 
 SQL Query:"""
+
+        # Add current query to messages
+        messages.append({
+            "role": "user",
+            "content": prompt
+        })
 
         # Prepare the request body for Claude
         request_body = {
             "anthropic_version": "bedrock-2023-05-31",
             "max_tokens": 1000,
-            "messages": [
-                {
-                    "role": "user",
-                    "content": prompt
-                }
-            ],
+            "messages": messages,
             "temperature": 0.1,  # Low temperature for more deterministic output
         }
 
@@ -109,19 +124,33 @@ SQL Query:"""
         return sql
 
     def chat_with_results(self, natural_language_query: str, sql_query: str,
-                          results: list, error: Optional[str] = None) -> str:
+                          results: list, error: Optional[str] = None,
+                          conversation_history: List[Dict[str, Any]] = None) -> str:
         """
-        Generate a natural language response based on the query results.
+        Generate a natural language response based on the query results with conversation context.
 
         Args:
             natural_language_query: Original user question
             sql_query: Generated SQL query
             results: Query results
             error: Error message if query failed
+            conversation_history: Previous conversation messages for context
 
         Returns:
             Natural language explanation of results
         """
+        # Build messages array with conversation history
+        messages = []
+
+        # Add conversation history if provided
+        if conversation_history:
+            for msg in conversation_history:
+                messages.append({
+                    "role": msg.get("role"),
+                    "content": msg.get("content")
+                })
+
+        # Build the prompt for explanation
         if error:
             prompt = f"""The user asked: "{natural_language_query}"
 
@@ -140,15 +169,16 @@ Results: {json.dumps(results, indent=2)}
 
 Please provide a natural language summary of the results in 2-3 sentences."""
 
+        # Add current prompt to messages
+        messages.append({
+            "role": "user",
+            "content": prompt
+        })
+
         request_body = {
             "anthropic_version": "bedrock-2023-05-31",
             "max_tokens": 500,
-            "messages": [
-                {
-                    "role": "user",
-                    "content": prompt
-                }
-            ],
+            "messages": messages,
             "temperature": 0.7,
         }
 
