@@ -1,7 +1,7 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, List, Dict, Any
 import os
 from dotenv import load_dotenv
 
@@ -42,6 +42,7 @@ query_processor = QueryProcessor(db_service, bedrock_client)
 class NaturalLanguageQuery(BaseModel):
     query: str
     include_explanation: bool = True
+    conversation_history: List[Dict[str, Any]] = []
 
 
 class DirectSQLQuery(BaseModel):
@@ -83,15 +84,17 @@ async def health_check():
 @app.post("/query")
 async def process_query(query_data: NaturalLanguageQuery):
     """
-    Process a natural language query.
+    Process a natural language query with conversation context.
 
     Converts the natural language query to SQL using AWS Bedrock,
     executes it against the database, and returns results.
+    Supports conversation history for context-aware responses.
     """
     try:
         result = query_processor.process_natural_language_query(
             query_data.query,
-            include_explanation=query_data.include_explanation
+            include_explanation=query_data.include_explanation,
+            conversation_history=query_data.conversation_history
         )
 
         if not result["success"]:
