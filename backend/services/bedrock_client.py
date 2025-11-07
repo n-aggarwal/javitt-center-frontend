@@ -17,7 +17,8 @@ class BedrockClient:
         self.client = boto3.client('bedrock-runtime', region_name=region_name)
 
     def generate_sql(self, natural_language_query: str, database_schema: str,
-                     conversation_history: List[Dict[str, Any]] = None) -> str:
+                     conversation_history: List[Dict[str, Any]] = None,
+                     data_dictionary: Optional[str] = None) -> str:
         """
         Convert natural language query to SQL using AWS Bedrock with conversation context.
 
@@ -25,6 +26,7 @@ class BedrockClient:
             natural_language_query: The user's question in natural language
             database_schema: String describing the database schema
             conversation_history: Previous conversation messages for context
+            data_dictionary: Optional data dictionary with column descriptions and business rules
 
         Returns:
             Generated SQL query string
@@ -44,7 +46,16 @@ class BedrockClient:
         prompt = f"""You are a SQL expert. Given a database schema, a natural language question, and a database dictionary if provided, generate a valid SQLite query.
 
 {database_schema}
+"""
 
+        # Add data dictionary if provided
+        if data_dictionary:
+            prompt += f"""
+Data Dictionary (Column Descriptions and Business Rules):
+{data_dictionary}
+"""
+
+        prompt += f"""
 User Question: {natural_language_query}
 
 Important instructions:
@@ -56,6 +67,7 @@ Important instructions:
 6. Include appropriate WHERE clauses to filter results
 7. Return ONLY the SQL query without any markdown formatting, backticks, or code blocks
 8. Consider previous conversation context when generating the query
+9. Use the data dictionary to understand column meanings and business rules
 
 SQL Query:"""
 
@@ -195,3 +207,154 @@ Please provide a natural language summary of the results in 2-3 sentences."""
 
         except Exception as e:
             return f"Query executed successfully but couldn't generate explanation: {str(e)}"
+
+    def analyze_schema(self, raw_schema: str, sample_data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Analyze raw database schema and return structured version.
+
+        Args:
+            raw_schema: Raw schema string from database
+            sample_data: Sample data from each table for pattern analysis
+
+        Returns:
+            Structured schema dictionary
+        """
+        prompt = f"""You are a database expert. Analyze this SQLite database schema and sample data.
+
+Raw Schema:
+{raw_schema}
+
+Sample Data (first few rows from each table):
+{json.dumps(sample_data, indent=2, default=str)}
+
+Analyze the schema and provide a structured JSON response with:
+1. Tables and their purposes
+2. Column types and meanings
+3. Relationships between tables (foreign keys, implied relationships)
+4. Data patterns observed in sample data
+5. Potential primary and foreign keys
+
+Return ONLY valid JSON in this format:
+{{
+  "tables": {{
+    "table_name": {{
+      "purpose": "brief description",
+      "columns": [
+        {{
+          "name": "column_name",
+          "type": "data_type",
+          "meaning": "what this column represents",
+          "patterns": "observed patterns from sample data"
+        }}
+      ],
+      "relationships": [
+        {{"type": "foreign_key", "references": "other_table.column", "description": "relationship description"}}
+      ]
+    }}
+  }}
+}}
+
+Return only the JSON, no additional text."""
+
+        request_body = {
+            "anthropic_version": "bedrock-2023-05-31",
+            "max_tokens": 4000,
+            "messages": [{
+                "role": "user",
+                "content": prompt
+            }],
+            "temperature": 0.3
+        }
+
+        try:
+            response = self.client.invoke_model(
+                modelId=self.model_id,
+                body=json.dumps(request_body)
+            )
+
+            response_body = json.loads(response['body'].read())
+            result_text = response_body['content'][0]['text'].strip()
+
+            # Clean JSON response (remove markdown if present)
+            if "```json" in result_text:
+                result_text = result_text.split("```json")[1].split("```")[0].strip()
+            elif "```" in result_text:
+                result_text = result_text.split("```")[1].split("```")[0].strip()
+
+            # Parse JSON
+            structured_schema = json.loads(result_text)
+            return structured_schema
+
+        except Exception as e:
+            raise Exception(f"Error analyzing schema: {str(e)}")
+
+    def generate_data_dictionary(self, structured_schema: Dict[str, Any],
+                                  sample_data: Dict[str, Any]) -> str:
+        """
+        Generate human-readable data dictionary from structured schema.
+
+        Args:
+            structured_schema: Structured schema from analyze_schema()
+            sample_data: Sample data from each table
+
+        Returns:
+            Data dictionary as formatted string
+        """
+        prompt = f"""You are a database documentation expert. Create a comprehensive data dictionary based on this structured schema analysis.
+
+Structured Schema:
+{json.dumps(structured_schema, indent=2)}
+
+Sample Data:
+{json.dumps(sample_data, indent=2, default=str)}
+
+Create a data dictionary that includes:
+1. Each table and column with clear descriptions
+2. Data types and constraints
+3. Business rules inferred from the data
+4. Relationships between tables
+5. Valid values or ranges (based on sample data)
+6. Any naming conventions or patterns
+
+Format the dictionary in a clear, readable way like:
+
+tablename.columnname: Description (Type)
+- Business rule if applicable
+- Valid values or patterns
+
+Example:
+customers.customer_id: Unique identifier for each customer (INTEGER)
+- Primary key, auto-incremented
+
+customers.status: Customer account status (INTEGER)
+- 1 = active, 0 = inactive
+- Default appears to be 1
+
+orders.customer_id: Reference to customer who placed the order (INTEGER)
+- Foreign key referencing customers.customer_id
+
+Provide the complete data dictionary for all tables and columns."""
+
+        request_body = {
+            "anthropic_version": "bedrock-2023-05-31",
+            "max_tokens": 4000,
+            "messages": [{
+                "role": "user",
+                "content": prompt
+            }],
+            "temperature": 0.4
+        }
+
+        try:
+            response = self.client.invoke_model(
+                modelId=self.model_id,
+                body=json.dumps(request_body)
+            )
+
+            response_body = json.loads(response['body'].read())
+            data_dictionary = response_body['content'][0]['text'].strip()
+
+            return data_dictionary
+
+        except Exception as e:
+            raise Exception(f"Error generating data dictionary: {str(e)}")

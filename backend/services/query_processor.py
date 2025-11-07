@@ -1,4 +1,4 @@
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from .database import DatabaseService
 from .bedrock_client import BedrockClient
 
@@ -17,14 +17,16 @@ class QueryProcessor:
 
     def process_natural_language_query(self, natural_language_query: str,
                                        include_explanation: bool = True,
-                                       conversation_history: List[Dict[str, Any]] = None) -> Dict[str, Any]:
+                                       conversation_history: List[Dict[str, Any]] = None,
+                                       data_dictionary: Optional[str] = None) -> Dict[str, Any]:
         """
-        Process a natural language query end-to-end with conversation context.
+        Process a natural language query end-to-end with conversation context and data dictionary.
 
         Args:
             natural_language_query: User's question in natural language
             include_explanation: Whether to generate natural language explanation of results
             conversation_history: Previous conversation messages for context
+            data_dictionary: Optional data dictionary with column descriptions and business rules
 
         Returns:
             Dictionary containing:
@@ -50,11 +52,12 @@ class QueryProcessor:
             # Step 1: Get database schema
             schema = self.db_service.get_schema()
 
-            # Step 2: Generate SQL using Bedrock with conversation history
+            # Step 2: Generate SQL using Bedrock with conversation history and data dictionary
             sql_query = self.bedrock_client.generate_sql(
                 natural_language_query,
                 schema,
-                conversation_history=conversation_history
+                conversation_history=conversation_history,
+                data_dictionary=data_dictionary
             )
             response["sql"] = sql_query
 
