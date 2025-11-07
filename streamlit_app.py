@@ -1,5 +1,5 @@
 import streamlit as st
-from bedrock_client import make_bedrock_client, DEFAULT_MODEL_ID, extract_text_from_message
+from bedrock_client import make_bedrock_client, DEFAULT_MODEL_ID, DEFAULT_REGION
 from agent import agent_multistep
 import db_tools as dbt
 import traceback
@@ -10,9 +10,9 @@ st.title("🧠 Bedrock MySQL Data Agent")
 
 with st.sidebar:
     st.header("AWS & Model")
-    region = st.text_input("AWS Region", value="us-west-2", help="Region where Bedrock is enabled")
-    model_id = st.text_input("Model ID", value=DEFAULT_MODEL_ID, help="Claude Sonnet model ID available in your account")
-    aws_profile = st.text_input("AWS Profile (optional)", value="", help="If empty, default credentials/role are used")
+    st.caption("Using fixed configuration")
+    st.text(f"Region: {DEFAULT_REGION}")
+    st.text(f"Model: {DEFAULT_MODEL_ID}")
 
     st.header("MySQL Connection")
     host = st.text_input("Host", value="localhost")
@@ -26,11 +26,12 @@ with st.sidebar:
 if "history" not in st.session_state:
     st.session_state.history = []  # Bedrock messages format
 
-if "client" not in st.session_state or st.button("Reconnect AWS Client"):
+# Auto-connect to Bedrock on first load using fixed region
+if "client" not in st.session_state:
     try:
-        client = make_bedrock_client(region, profile_name=aws_profile or None)
+        client = make_bedrock_client(DEFAULT_REGION)
         st.session_state.client = client
-        st.success("Connected to Bedrock client")
+        st.success(f"Connected to Bedrock client (region={DEFAULT_REGION}, model={DEFAULT_MODEL_ID})")
     except Exception as e:
         st.session_state.client = None
         st.error(f"Failed to create Bedrock client: {e}")
@@ -75,7 +76,7 @@ if run_btn and user_msg.strip():
                 history_messages=st.session_state.history,
                 user_msg=user_msg.strip(),
                 tools_impl=TOOLS_IMPL,
-                model_id=model_id,
+                model_id=DEFAULT_MODEL_ID,
                 max_iters=3,
             )
             st.session_state.history = messages
@@ -104,7 +105,7 @@ st.divider()
 
 st.subheader("Quick Start")
 st.markdown("""
-1. Fill AWS Region and Model ID (ensure model is enabled in your account).
+1. On load, the app auto-connects to Amazon Bedrock in us-west-2 using Claude Sonnet (fixed).
 2. Enter MySQL connection details and click 'Connect Database'.
 3. Ask the agent tasks like:
    - "Show the schema and row counts for the main tables."

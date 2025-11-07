@@ -18,7 +18,18 @@ def make_db_url(host: str, port: int, user: str, password: str, database: str) -
 
 def set_engine(db_url: str):
     global _engine
-    _engine = sa.create_engine(db_url, pool_pre_ping=True, pool_recycle=3600, future=True)
+    # Create the engine, then immediately validate credentials with a lightweight query.
+    engine = sa.create_engine(db_url, pool_pre_ping=True, pool_recycle=3600, future=True)
+    try:
+        with engine.connect() as conn:
+            # Simple no-op query to force an actual connection/auth check
+            conn.execute(text("SELECT 1"))
+    except Exception:
+        # Ensure resources are cleaned up on failure and propagate the error
+        engine.dispose()
+        raise
+    # Only set the global engine if the connection test succeeded
+    _engine = engine
 
 
 def set_write_policy(allow_writes: bool):

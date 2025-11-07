@@ -9,47 +9,53 @@ SYSTEM_PROMPT = (
     "- Keep results concise; include next steps when helpful.\n"
 )
 
-TOOL_SCHEMAS = [
+TOOL_DEFS = [
     {
-        "name": "get_schema",
-        "description": "Return database schema with tables and columns. Optionally include row counts.",
-        "inputSchema": {
-            "json": {
-                "type": "object",
-                "properties": {
-                    "include_counts": {"type": "boolean", "default": False},
-                    "tables": {"type": "array", "items": {"type": "string"}}
+        "toolSpec": {
+            "name": "get_schema",
+            "description": "Return database schema with tables and columns. Optionally include row counts.",
+            "inputSchema": {
+                "json": {
+                    "type": "object",
+                    "properties": {
+                        "include_counts": {"type": "boolean", "default": False},
+                        "tables": {"type": "array", "items": {"type": "string"}}
+                    }
                 }
             }
         }
     },
     {
-        "name": "run_sql",
-        "description": "Execute SQL. Defaults to read-only. Results truncated by row_limit.",
-        "inputSchema": {
-            "json": {
-                "type": "object",
-                "properties": {
-                    "sql": {"type": "string"},
-                    "params": {"type": "object"},
-                    "write": {"type": "boolean", "default": False},
-                    "row_limit": {"type": "integer", "default": 200}
-                },
-                "required": ["sql"]
+        "toolSpec": {
+            "name": "run_sql",
+            "description": "Execute SQL. Defaults to read-only. Results truncated by row_limit.",
+            "inputSchema": {
+                "json": {
+                    "type": "object",
+                    "properties": {
+                        "sql": {"type": "string"},
+                        "params": {"type": "object"},
+                        "write": {"type": "boolean", "default": False},
+                        "row_limit": {"type": "integer", "default": 200}
+                    },
+                    "required": ["sql"]
+                }
             }
         }
     },
     {
-        "name": "sample_rows",
-        "description": "Return up to N rows from a table.",
-        "inputSchema": {
-            "json": {
-                "type": "object",
-                "properties": {
-                    "table": {"type": "string"},
-                    "limit": {"type": "integer", "default": 50}
-                },
-                "required": ["table"]
+        "toolSpec": {
+            "name": "sample_rows",
+            "description": "Return up to N rows from a table.",
+            "inputSchema": {
+                "json": {
+                    "type": "object",
+                    "properties": {
+                        "table": {"type": "string"},
+                        "limit": {"type": "integer", "default": 50}
+                    },
+                    "required": ["table"]
+                }
             }
         }
     }
@@ -83,7 +89,7 @@ def agent_step(client,
         modelId=model_id,
         system=[{"text": SYSTEM_PROMPT}],
         messages=messages,
-        toolConfig={"tools": TOOL_SCHEMAS},
+        toolConfig={"tools": TOOL_DEFS},
         inferenceConfig={"maxTokens": max_tokens, "temperature": temperature},
     )
     msg = resp["output"]["message"]
@@ -106,6 +112,7 @@ def agent_step(client,
         except Exception as e:
             result = {"error": str(e)}
         tool_results.append({
+            "type": "toolResult",
             "toolUseId": call.get("toolUseId"),
             "content": [{"json": result}]
         })
@@ -115,7 +122,7 @@ def agent_step(client,
         modelId=model_id,
         system=[{"text": SYSTEM_PROMPT}],
         messages=messages + [msg, {"role": "user", "content": tool_results}],
-        toolConfig={"tools": TOOL_SCHEMAS},
+        toolConfig={"tools": TOOL_DEFS},
         inferenceConfig={"maxTokens": max_tokens, "temperature": temperature},
     )
     return follow["output"]["message"], tool_results
