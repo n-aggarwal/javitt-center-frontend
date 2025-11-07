@@ -1,0 +1,47 @@
+Table Name,Column Name,Data Type,Primary Key,Foreign Key Reference,Not Null,Default Value,Description
+categories,category_id,INTEGER,Yes,,No,,Unique identifier for product category
+categories,name,TEXT,No,,Yes,,Name of the product category
+products,product_id,INTEGER,Yes,,No,,Unique identifier for product
+products,name,TEXT,No,,Yes,,Name of the product
+products,category_id,INTEGER,No,categories(category_id),No,,Reference to product category
+products,price,REAL,No,,Yes,,Price of the product in dollars
+stores,store_id,INTEGER,Yes,,No,,Unique identifier for store
+stores,name,TEXT,No,,Yes,,Name of the store location
+stores,city,TEXT,No,,Yes,,City where store is located
+stores,state,TEXT,No,,Yes,,State where store is located (2-letter code)
+customers,customer_id,INTEGER,Yes,,No,,Unique identifier for customer
+customers,first_name,TEXT,No,,No,,Customer's first name
+customers,last_name,TEXT,No,,No,,Customer's last name
+customers,email,TEXT,No,,No,,Customer's email address
+customers,city,TEXT,No,,No,,City where customer is located
+customers,state,TEXT,No,,No,,State where customer is located
+customers,created_at,TEXT,No,,No,,Timestamp when customer account was created
+employees,employee_id,INTEGER,Yes,,No,,Unique identifier for employee
+employees,first_name,TEXT,No,,No,,Employee's first name
+employees,last_name,TEXT,No,,No,,Employee's last name
+employees,role,TEXT,No,,No,,Job role/title of employee
+employees,store_id,INTEGER,No,stores(store_id),No,,Reference to store where employee works
+employees,hire_date,TEXT,No,,No,,Date when employee was hired
+orders,order_id,INTEGER,Yes,,No,,Unique identifier for order
+orders,customer_id,INTEGER,No,customers(customer_id),No,,Reference to customer who placed order
+orders,store_id,INTEGER,No,stores(store_id),No,,Reference to store where order was placed
+orders,order_date,TEXT,No,,No,,Date when order was placed
+orders,status,TEXT,No,,No,PENDING,Current status of order (e.g. PENDING)
+order_items,order_item_id,INTEGER,Yes,,No,,Unique identifier for order line item
+order_items,order_id,INTEGER,No,orders(order_id),No,,Reference to parent order
+order_items,product_id,INTEGER,No,products(product_id),No,,Reference to product ordered
+order_items,quantity,INTEGER,No,,No,,Quantity of product ordered
+order_items,unit_price,REAL,No,,No,,Price per unit at time of order
+inventory,inventory_id,INTEGER,Yes,,No,,Unique identifier for inventory record
+inventory,store_id,INTEGER,No,stores(store_id),No,,Reference to store
+inventory,product_id,INTEGER,No,products(product_id),No,,Reference to product
+inventory,stock,INTEGER,No,,No,,Current stock quantity available
+inventory,last_updated,TEXT,No,,No,,Timestamp of last inventory update
+v_order_totals,order_id,INTEGER,No,orders(order_id),No,,"View: Order ID (derived from orders table)"
+v_order_totals,order_date,TEXT,No,,No,,"View: Order date (derived from orders table)"
+v_order_totals,store_id,INTEGER,No,stores(store_id),No,,"View: Store ID (derived from orders table)"
+v_order_totals,customer_id,INTEGER,No,customers(customer_id),No,,"View: Customer ID (derived from orders table)"
+v_order_totals,order_total,REAL,No,,No,,"View: Calculated total price for order (SUM of quantity * unit_price)"
+v_customer_lifetime_value,customer_id,INTEGER,No,customers(customer_id),No,,"View: Customer ID (derived from customers table)"
+v_customer_lifetime_value,customer_name,TEXT,No,,No,,"View: Full customer name (first_name || last_name)"
+v_customer_lifetime_value,lifetime_value,REAL,No,,No,,"View: Total amount customer has spent across all orders"

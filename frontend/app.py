@@ -4,27 +4,33 @@ import json
 
 st.set_page_config(page_title="Bedrock MySQL Data Agent", page_icon="🧠", layout="wide")
 
+# Backend URL configuration
+backend_url = "http://localhost:8000"
+
 st.title("🧠 Bedrock MySQL Data Agent")
 
 with st.sidebar:
-    st.header("AWS & Model")
-    region = st.text_input("AWS Region", value="us-east-1", help="Region where Bedrock is enabled")
-    model_id = st.text_input("Model ID", value="us.anthropic.claude-3-5-sonnet-20241022-v2:0", help="Claude Sonnet model ID")
-    aws_profile = st.text_input("AWS Profile (optional)", value="", help="Configured in backend")
+    st.header("Data Dictionary")
+    st.caption("Add column descriptions and business rules to help generate better SQL")
 
-    st.header("Database Connection")
-    host = st.text_input("Host", value="localhost", disabled=True)
-    port = st.number_input("Port", value=3306, step=1, disabled=True)
-    user = st.text_input("User", value="root", disabled=True)
-    password = st.text_input("Password", value="", type="password", disabled=True)
-    database = st.text_input("Database", value="nl2sql_demo.sqlite", disabled=True)
+    # Text area for data dictionary
+    data_dict_input = st.text_area(
+        "Enter Data Dictionary",
+        placeholder="""Example:
+customers.customer_id: Unique identifier for each customer
+customers.status: 1 = active, 0 = inactive
+orders.total_amount: Total order amount in USD
+orders.order_date: Date when order was placed (YYYY-MM-DD format)""",
+        height=150,
+        help="Provide column descriptions, business rules, and data formats"
+    )
 
-    st.info("Database connection is managed by the backend (SQLite)")
-
-    allow_writes = st.checkbox("Allow write operations (dangerous)", value=False, help="Backend enforces read-only mode", disabled=True)
-
-    st.header("Backend Configuration")
-    backend_url = st.text_input("Backend API URL", value="http://localhost:8000", help="URL of the FastAPI backend")
+    # File upload for data dictionary
+    uploaded_file = st.file_uploader(
+        "Or upload Data Dictionary file",
+        type=['txt', 'md'],
+        help="Upload a text or markdown file with column descriptions"
+    )
 
 # Initialize session state for conversation history
 if "history" not in st.session_state:
@@ -33,17 +39,24 @@ if "history" not in st.session_state:
 if "conversation_history" not in st.session_state:
     st.session_state.conversation_history = []  # Stores messages for API
 
-# Test backend connection
-if st.sidebar.button("Test Backend Connection"):
+# Initialize or update data dictionary in session state
+if "data_dictionary" not in st.session_state:
+    st.session_state.data_dictionary = None
+
+# Handle file upload
+if uploaded_file is not None:
     try:
-        response = requests.get(f"{backend_url}/health", timeout=5)
-        if response.status_code == 200:
-            data = response.json()
-            st.sidebar.success(f"✓ Backend connected! Tables: {data.get('tables_count', 0)}")
-        else:
-            st.sidebar.error(f"Backend returned status: {response.status_code}")
+        file_content = uploaded_file.read().decode("utf-8")
+        st.session_state.data_dictionary = file_content
+        st.sidebar.success(f"✓ Loaded data dictionary from {uploaded_file.name}")
     except Exception as e:
-        st.sidebar.error(f"Failed to connect to backend: {e}")
+        st.sidebar.error(f"Error reading file: {e}")
+elif data_dict_input.strip():
+    # Use text area input if no file uploaded
+    st.session_state.data_dictionary = data_dict_input.strip()
+else:
+    # Clear data dictionary if both are empty
+    st.session_state.data_dictionary = None
 
 st.subheader("Ask the agent")
 user_msg = st.text_area("Your request", placeholder="e.g., How many customers do we have?")
@@ -65,7 +78,8 @@ if run_btn and user_msg.strip():
         payload = {
             "query": user_msg.strip(),
             "include_explanation": True,
-            "conversation_history": st.session_state.conversation_history
+            "conversation_history": st.session_state.conversation_history,
+            "data_dictionary": st.session_state.data_dictionary
         }
 
         # Call backend API
@@ -170,7 +184,7 @@ st.divider()
 st.subheader("Quick Start")
 st.markdown("""
 1. Make sure the backend is running: `cd backend && python app.py`
-2. Test the backend connection using the sidebar button.
+2. (Optional) Add a data dictionary in the sidebar to improve SQL generation
 3. Ask the agent tasks like:
    - "How many customers do we have?"
    - "Show me the first 5 products"

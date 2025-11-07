@@ -43,6 +43,7 @@ class NaturalLanguageQuery(BaseModel):
     query: str
     include_explanation: bool = True
     conversation_history: List[Dict[str, Any]] = []
+    data_dictionary: Optional[str] = None
 
 
 class DirectSQLQuery(BaseModel):
@@ -84,17 +85,19 @@ async def health_check():
 @app.post("/query")
 async def process_query(query_data: NaturalLanguageQuery):
     """
-    Process a natural language query with conversation context.
+    Process a natural language query with conversation context and data dictionary.
 
     Converts the natural language query to SQL using AWS Bedrock,
     executes it against the database, and returns results.
-    Supports conversation history for context-aware responses.
+    Supports conversation history for context-aware responses and optional
+    data dictionary for better understanding of column meanings and business rules.
     """
     try:
         result = query_processor.process_natural_language_query(
             query_data.query,
             include_explanation=query_data.include_explanation,
-            conversation_history=query_data.conversation_history
+            conversation_history=query_data.conversation_history,
+            data_dictionary=query_data.data_dictionary
         )
 
         if not result["success"]:
