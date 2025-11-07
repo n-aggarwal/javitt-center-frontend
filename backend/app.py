@@ -7,16 +7,16 @@ from dotenv import load_dotenv
 
 from services.database import DatabaseService
 from services.bedrock_client import BedrockClient
-from services.query_processor import QueryProcessor
+from services.agentic_workflow import AgenticWorkflow
 
 # Load environment variables
 load_dotenv()
 
 # Initialize FastAPI app
 app = FastAPI(
-    title="Natural Language to SQL API",
-    description="Convert natural language queries to SQL using AWS Bedrock",
-    version="1.0.0"
+    title="Natural Language to SQL API (Agentic)",
+    description="Convert natural language queries to SQL using AWS Bedrock with agentic workflow",
+    version="2.0.0"
 )
 
 # Configure CORS
@@ -32,10 +32,18 @@ app.add_middleware(
 DATABASE_PATH = os.getenv("DATABASE_PATH", "nl2sql_demo.sqlite")
 AWS_REGION = os.getenv("AWS_REGION", "us-east-1")
 BEDROCK_MODEL_ID = os.getenv("BEDROCK_MODEL_ID", "anthropic.claude-3-5-sonnet-20241022-v2:0")
+CACHE_DIR = os.getenv("CACHE_DIR", ".cache")
 
 db_service = DatabaseService(DATABASE_PATH)
 bedrock_client = BedrockClient(AWS_REGION, BEDROCK_MODEL_ID)
-query_processor = QueryProcessor(db_service, bedrock_client)
+
+# Initialize agentic workflow (replaces query_processor)
+agentic_workflow = AgenticWorkflow(
+    db_service=db_service,
+    bedrock_client=bedrock_client,
+    db_path=DATABASE_PATH,
+    cache_dir=CACHE_DIR
+)
 
 
 # Request/Response Models
@@ -43,7 +51,6 @@ class NaturalLanguageQuery(BaseModel):
     query: str
     include_explanation: bool = True
     conversation_history: List[Dict[str, Any]] = []
-    data_dictionary: Optional[str] = None
 
 
 class DirectSQLQuery(BaseModel):
@@ -55,13 +62,17 @@ class DirectSQLQuery(BaseModel):
 async def root():
     """Root endpoint with API information."""
     return {
-        "message": "Natural Language to SQL API",
-        "version": "1.0.0",
+        "message": "Natural Language to SQL API (Agentic Workflow)",
+        "version": "2.0.0",
+        "description": "Agentic workflow with schema extraction, analysis, and data dictionary generation",
         "endpoints": {
             "POST /query": "Convert natural language to SQL and execute",
             "POST /execute": "Execute SQL query directly",
             "GET /database/info": "Get database schema and information",
             "GET /database/tables": "List all tables",
+            "GET /database/schema": "Get the database schema",
+            "POST /schema/initialize": "Initialize or refresh schema and data dictionary",
+            "GET /schema/cache-info": "Get cache status information",
             "GET /health": "Health check"
         }
     }
@@ -85,19 +96,21 @@ async def health_check():
 @app.post("/query")
 async def process_query(query_data: NaturalLanguageQuery):
     """
-    Process a natural language query with conversation context and data dictionary.
+    Process a natural language query with conversation context.
 
-    Converts the natural language query to SQL using AWS Bedrock,
-    executes it against the database, and returns results.
-    Supports conversation history for context-aware responses and optional
-    data dictionary for better understanding of column meanings and business rules.
+    Uses the agentic workflow to:
+    1. Automatically use cached schema and data dictionary
+    2. Generate SQL using AWS Bedrock
+    3. Execute the query
+    4. Return results with optional explanation
+
+    The schema and data dictionary are initialized once on first use and cached.
     """
     try:
-        result = query_processor.process_natural_language_query(
+        result = agentic_workflow.process_query(
             query_data.query,
             include_explanation=query_data.include_explanation,
-            conversation_history=query_data.conversation_history,
-            data_dictionary=query_data.data_dictionary
+            conversation_history=query_data.conversation_history
         )
 
         if not result["success"]:
@@ -131,7 +144,7 @@ async def execute_sql(query_data: DirectSQLQuery):
     Useful for testing or when you already have a SQL query.
     """
     try:
-        result = query_processor.execute_direct_sql(query_data.sql)
+        result = agentic_workflow.execute_direct_sql(query_data.sql)
 
         if not result["success"]:
             return {
@@ -157,10 +170,11 @@ async def get_database_info():
     """
     Get comprehensive database information.
 
-    Returns schema, table list, and sample data from each table.
+    Returns raw schema, structured schema, data dictionary, and sample data.
+    Schema and data dictionary are generated once and cached.
     """
     try:
-        info = query_processor.get_database_info()
+        info = agentic_workflow.get_database_info()
         return info
 
     except Exception as e:
@@ -189,6 +203,51 @@ async def get_schema():
         return {
             "schema": schema
         }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+class SchemaInitializeRequest(BaseModel):
+    force_refresh: bool = False
+
+
+@app.post("/schema/initialize")
+async def initialize_schema(request: SchemaInitializeRequest = SchemaInitializeRequest()):
+    """
+    Initialize or refresh schema and data dictionary.
+
+    This endpoint runs the agentic workflow to:
+    1. Extract schema from database
+    2. Analyze schema with Bedrock
+    3. Generate data dictionary with Bedrock
+    4. Cache all results
+
+    Args:
+        force_refresh: If True, regenerate even if cache exists
+    """
+    try:
+        result = agentic_workflow.initialize_schema(force_refresh=request.force_refresh)
+        return {
+            "success": True,
+            "message": "Schema initialized successfully" if not request.force_refresh else "Schema refreshed successfully",
+            "data": result
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/schema/cache-info")
+async def get_cache_info():
+    """
+    Get information about the schema cache status.
+
+    Returns cache metadata, file paths, and status information.
+    """
+    try:
+        info = agentic_workflow.get_cache_info()
+        return info
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
