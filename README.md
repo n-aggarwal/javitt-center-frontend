@@ -2,6 +2,8 @@
 
 > AI-powered SQL query generation using AWS Bedrock and Retrieval-Augmented Generation
 
+## Demo: https://drive.google.com/file/d/167DM_eJb-sea7svHPTWDAYsI-Gm5SGpM/view?usp=sharing
+
 ## What It Does
 
 Ask questions in plain English, get SQL queries and results automatically. The system uses RAG (Retrieval-Augmented Generation) to learn from similar examples and generate more accurate SQL queries.
