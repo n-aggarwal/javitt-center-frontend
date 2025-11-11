@@ -3,6 +3,8 @@ from .database import DatabaseService
 from .bedrock_client import BedrockClient
 from .schema_cache import SchemaCache
 from .schema_initializer import SchemaInitializer
+from .rag_service import RAGService
+from .example_generator import ExampleGenerator
 import logging
 
 logging.basicConfig(level=logging.INFO)
@@ -20,7 +22,7 @@ class AgenticWorkflow:
     """
 
     def __init__(self, db_service: DatabaseService, bedrock_client: BedrockClient,
-                 db_path: str, cache_dir: str = ".cache"):
+                 db_path: str, cache_dir: str = ".cache", data_dir: str = "data"):
         """
         Initialize the agentic workflow.
 
@@ -29,6 +31,7 @@ class AgenticWorkflow:
             bedrock_client: BedrockClient instance
             db_path: Path to the database file
             cache_dir: Directory for caching
+            data_dir: Directory for RAG data storage
         """
         self.db_service = db_service
         self.bedrock_client = bedrock_client
@@ -37,6 +40,10 @@ class AgenticWorkflow:
         # Initialize cache and schema initializer
         self.cache = SchemaCache(cache_dir)
         self.schema_initializer = SchemaInitializer(db_service, bedrock_client, self.cache)
+
+        # Initialize RAG service and example generator
+        self.rag_service = RAGService(data_dir=data_dir)
+        self.example_generator = ExampleGenerator(db_service, bedrock_client)
 
         # Schema information (loaded lazily)
         self._schema_info = None
@@ -92,12 +99,25 @@ class AgenticWorkflow:
 
             logger.info(f"Processing query: {natural_language_query[:50]}...")
 
-            # Step 2: Generate SQL using Bedrock with schema and data dictionary
+            # Step 1.5: Retrieve similar examples using RAG
+            similar_examples = []
+            try:
+                similar_examples = self.rag_service.find_similar_examples(
+                    natural_language_query,
+                    k=3  # Retrieve top 3 similar examples
+                )
+                if similar_examples:
+                    logger.info(f"Retrieved {len(similar_examples)} similar examples from RAG")
+            except Exception as e:
+                logger.warning(f"Could not retrieve RAG examples: {e}")
+
+            # Step 2: Generate SQL using Bedrock with schema, data dictionary, and RAG examples
             sql_query = self.bedrock_client.generate_sql(
                 natural_language_query,
                 raw_schema,
                 conversation_history=conversation_history,
-                data_dictionary=data_dictionary
+                data_dictionary=data_dictionary,
+                similar_examples=similar_examples
             )
             response["sql"] = sql_query
             logger.info(f"Generated SQL: {sql_query}")
@@ -239,3 +259,60 @@ class AgenticWorkflow:
         )
         logger.info("Schema initialization complete")
         return self.get_database_info()
+
+    def generate_rag_examples(self, num_examples: int = 50) -> Dict[str, Any]:
+        """
+        Generate RAG examples for improved query processing.
+
+        Args:
+            num_examples: Number of examples to generate
+
+        Returns:
+            Dictionary with generation status and examples
+        """
+        logger.info(f"Generating {num_examples} RAG examples...")
+
+        try:
+            # Generate examples using the example generator
+            examples = self.example_generator.generate_examples(num_examples)
+
+            # Add examples to RAG service
+            self.rag_service.add_examples(examples)
+
+            logger.info(f"Successfully generated and stored {len(examples)} RAG examples")
+
+            return {
+                "success": True,
+                "num_examples": len(examples),
+                "examples": examples
+            }
+
+        except Exception as e:
+            logger.error(f"Error generating RAG examples: {e}")
+            return {
+                "success": False,
+                "error": str(e)
+            }
+
+    def get_rag_info(self) -> Dict[str, Any]:
+        """
+        Get information about the RAG system.
+
+        Returns:
+            Dictionary with RAG system stats
+        """
+        return self.rag_service.get_stats()
+
+    def get_rag_examples(self) -> List[Dict[str, str]]:
+        """
+        Get all RAG examples.
+
+        Returns:
+            List of all examples
+        """
+        return self.rag_service.get_all_examples()
+
+    def clear_rag_examples(self):
+        """Clear all RAG examples."""
+        self.rag_service.clear_examples()
+        logger.info("Cleared all RAG examples")

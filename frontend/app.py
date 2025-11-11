@@ -2,6 +2,14 @@ import streamlit as st
 import requests
 import json
 
+
+def escape_dollar_signs(text):
+    """Escape dollar signs to prevent LaTeX rendering in Streamlit markdown."""
+    if text:
+        return text.replace('$', r'\$')
+    return text
+
+
 st.set_page_config(page_title="Bedrock SQL Agent (Agentic Workflow)", page_icon="🧠", layout="wide")
 
 # Backend URL configuration
@@ -14,22 +22,34 @@ with st.sidebar:
     st.markdown("""
     This application uses an **agentic workflow** to automatically:
 
-    ✅ Extract database schema
-    ✅ Analyze table relationships
-    ✅ Generate data dictionary with AI
-    ✅ Cache everything for fast queries
+    - Extract database schema
+    - Analyze table relationships
+    - Generate data dictionary with AI
+    - Cache everything for fast queries
 
     **No manual setup required!**
     """)
 
     st.divider()
 
+    st.header("Data Dictionary (Optional)")
+    uploaded_file = st.file_uploader(
+        "Upload Custom Data Dictionary",
+        type=['csv'],
+        help="Upload a CSV file with custom column descriptions (coming soon)"
+    )
+
+    if uploaded_file is not None:
+        st.info("Custom data dictionary upload (coming soon)")
+
+    st.divider()
+
     st.header("How It Works")
     st.markdown("""
-    **Agent 1:** Extracts schema from database
-    **Agent 2:** Analyzes structure with Bedrock
-    **Agent 3:** Generates data dictionary
-    **Agent 4:** Answers your queries
+    - **Agent 1:** Extracts schema from database
+    - **Agent 2:** Analyzes structure with Bedrock
+    - **Agent 3:** Generates data dictionary
+    - **Agent 4:** Answers your queries
 
     The schema and dictionary are generated once and cached.
     """)
@@ -97,9 +117,9 @@ if run_btn and user_msg.strip():
                     results_preview = result['results'][:5]  # Show first 5 rows
                     assistant_response += f"```json\n{json.dumps(results_preview, indent=2)}\n```\n\n"
 
-                # Add explanation
+                # Add explanation (escape dollar signs to prevent LaTeX rendering)
                 if result.get('explanation'):
-                    assistant_response += f"**Explanation:**\n{result['explanation']}"
+                    assistant_response += f"**Explanation:**\n{escape_dollar_signs(result['explanation'])}"
 
                 st.session_state.history.append({
                     "role": "assistant",
@@ -124,7 +144,7 @@ if run_btn and user_msg.strip():
                 if result.get('sql'):
                     error_msg += f"**Generated SQL:**\n```sql\n{result['sql']}\n```\n\n"
                 if result.get('explanation'):
-                    error_msg += f"**Explanation:**\n{result['explanation']}"
+                    error_msg += f"**Explanation:**\n{escape_dollar_signs(result['explanation'])}"
 
                 st.session_state.history.append({
                     "role": "assistant",
@@ -246,12 +266,7 @@ if st.session_state.db_info_loaded and st.session_state.db_info:
 
                     st.divider()
 
-    # Display data dictionary
+    # Display data dictionary (escape dollar signs to prevent LaTeX rendering)
     if info.get("data_dictionary"):
         with st.expander("📖 Data Dictionary (Auto-Generated)", expanded=False):
-            st.markdown(info["data_dictionary"])
-
-    # Display raw schema for reference
-    if info.get("raw_schema"):
-        with st.expander("🔧 Raw Database Schema", expanded=False):
-            st.text(info["raw_schema"])
+            st.markdown(escape_dollar_signs(info["data_dictionary"]))

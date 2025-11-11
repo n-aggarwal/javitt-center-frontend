@@ -33,6 +33,7 @@ DATABASE_PATH = os.getenv("DATABASE_PATH", "nl2sql_demo.sqlite")
 AWS_REGION = os.getenv("AWS_REGION", "us-east-1")
 BEDROCK_MODEL_ID = os.getenv("BEDROCK_MODEL_ID", "anthropic.claude-3-5-sonnet-20241022-v2:0")
 CACHE_DIR = os.getenv("CACHE_DIR", ".cache")
+DATA_DIR = os.getenv("DATA_DIR", "data")
 
 db_service = DatabaseService(DATABASE_PATH)
 bedrock_client = BedrockClient(AWS_REGION, BEDROCK_MODEL_ID)
@@ -42,7 +43,8 @@ agentic_workflow = AgenticWorkflow(
     db_service=db_service,
     bedrock_client=bedrock_client,
     db_path=DATABASE_PATH,
-    cache_dir=CACHE_DIR
+    cache_dir=CACHE_DIR,
+    data_dir=DATA_DIR
 )
 
 
@@ -62,17 +64,21 @@ class DirectSQLQuery(BaseModel):
 async def root():
     """Root endpoint with API information."""
     return {
-        "message": "Natural Language to SQL API (Agentic Workflow)",
-        "version": "2.0.0",
-        "description": "Agentic workflow with schema extraction, analysis, and data dictionary generation",
+        "message": "Natural Language to SQL API (Agentic Workflow with RAG)",
+        "version": "2.1.0",
+        "description": "Agentic workflow with schema extraction, analysis, data dictionary generation, and RAG-enhanced query processing",
         "endpoints": {
-            "POST /query": "Convert natural language to SQL and execute",
+            "POST /query": "Convert natural language to SQL and execute (with RAG)",
             "POST /execute": "Execute SQL query directly",
             "GET /database/info": "Get database schema and information",
             "GET /database/tables": "List all tables",
             "GET /database/schema": "Get the database schema",
             "POST /schema/initialize": "Initialize or refresh schema and data dictionary",
             "GET /schema/cache-info": "Get cache status information",
+            "POST /rag/generate-examples": "Generate RAG examples for improved query processing",
+            "GET /rag/examples": "Get all RAG examples",
+            "GET /rag/info": "Get RAG system information",
+            "DELETE /rag/examples": "Clear all RAG examples",
             "GET /health": "Health check"
         }
     }
@@ -248,6 +254,93 @@ async def get_cache_info():
     try:
         info = agentic_workflow.get_cache_info()
         return info
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# RAG Endpoints
+class GenerateExamplesRequest(BaseModel):
+    num_examples: int = 50
+
+
+@app.post("/rag/generate-examples")
+async def generate_rag_examples(request: GenerateExamplesRequest = GenerateExamplesRequest()):
+    """
+    Generate RAG examples for improved query processing.
+
+    This endpoint uses AI to automatically generate diverse natural language to SQL
+    query examples based on your database schema. These examples are used to improve
+    SQL generation accuracy through retrieval-augmented generation (RAG).
+
+    Args:
+        num_examples: Number of examples to generate (default: 50)
+    """
+    try:
+        result = agentic_workflow.generate_rag_examples(num_examples=request.num_examples)
+
+        if not result.get("success"):
+            raise HTTPException(status_code=500, detail=result.get("error", "Failed to generate examples"))
+
+        return {
+            "success": True,
+            "message": f"Successfully generated {result['num_examples']} RAG examples",
+            "num_examples": result['num_examples'],
+            "examples_preview": result['examples'][:5]  # Return first 5 as preview
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/rag/examples")
+async def get_rag_examples():
+    """
+    Get all RAG examples.
+
+    Returns all stored natural language to SQL query examples.
+    """
+    try:
+        examples = agentic_workflow.get_rag_examples()
+        return {
+            "total_examples": len(examples),
+            "examples": examples
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/rag/info")
+async def get_rag_info():
+    """
+    Get information about the RAG system.
+
+    Returns statistics and configuration details about the RAG system.
+    """
+    try:
+        info = agentic_workflow.get_rag_info()
+        return info
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.delete("/rag/examples")
+async def clear_rag_examples():
+    """
+    Clear all RAG examples.
+
+    This will remove all stored examples and reset the RAG system.
+    """
+    try:
+        agentic_workflow.clear_rag_examples()
+        return {
+            "success": True,
+            "message": "All RAG examples have been cleared"
+        }
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

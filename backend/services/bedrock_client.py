@@ -18,15 +18,17 @@ class BedrockClient:
 
     def generate_sql(self, natural_language_query: str, database_schema: str,
                      conversation_history: List[Dict[str, Any]] = None,
-                     data_dictionary: Optional[str] = None) -> str:
+                     data_dictionary: Optional[str] = None,
+                     similar_examples: List[Dict[str, str]] = None) -> str:
         """
-        Convert natural language query to SQL using AWS Bedrock with conversation context.
+        Convert natural language query to SQL using AWS Bedrock with conversation context and RAG examples.
 
         Args:
             natural_language_query: The user's question in natural language
             database_schema: String describing the database schema
             conversation_history: Previous conversation messages for context
             data_dictionary: Optional data dictionary with column descriptions and business rules
+            similar_examples: Optional list of similar query examples from RAG
 
         Returns:
             Generated SQL query string
@@ -55,6 +57,14 @@ Data Dictionary (Column Descriptions and Business Rules):
 {data_dictionary}
 """
 
+        # Add similar examples from RAG if provided
+        if similar_examples and len(similar_examples) > 0:
+            prompt += "\n\nHere are some similar example queries to help guide your response:\n\n"
+            for i, example in enumerate(similar_examples, 1):
+                prompt += f"Example {i}:\n"
+                prompt += f"Question: {example['natural_language_query']}\n"
+                prompt += f"SQL: {example['sql_query']}\n\n"
+
         prompt += f"""
 User Question: {natural_language_query}
 
@@ -68,6 +78,7 @@ Important instructions:
 7. Return ONLY the SQL query without any markdown formatting, backticks, or code blocks
 8. Consider previous conversation context when generating the query
 9. Use the data dictionary to understand column meanings and business rules
+10. Do NOT use dollar signs ($) for currency - use plain numbers instead
 
 SQL Query:"""
 
@@ -179,7 +190,9 @@ We ran this SQL query: {sql_query}
 
 Results: {json.dumps(results, indent=2)}
 
-Please provide a natural language summary of the results in 2-3 sentences."""
+Please provide a natural language summary of the results in 2-3 sentences.
+
+IMPORTANT: Do NOT use dollar signs ($) when mentioning currency values. Instead, write currency amounts without the dollar sign (e.g., write "1,117.90" instead of "$1,117.90"). The frontend will handle currency formatting."""
 
         # Add current prompt to messages
         messages.append({
