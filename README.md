@@ -2,7 +2,7 @@
 
 > AI-powered SQL query generation using AWS Bedrock and Retrieval-Augmented Generation
 
-## Demo: https://drive.google.com/file/d/167DM_eJb-sea7svHPTWDAYsI-Gm5SGpM/view?usp=sharing
+**📽️ Demo:** [Watch Video](https://drive.google.com/file/d/167DM_eJb-sea7svHPTWDAYsI-Gm5SGpM/view?usp=sharing)
 
 ## What It Does
 
@@ -67,7 +67,7 @@ python app.py
 cd frontend
 streamlit run app.py
 # Runs on http://localhost:8501
-
+```
 
 ### Open the App
 
